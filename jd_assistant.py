@@ -375,9 +375,9 @@ class Assistant(object):
         if not self._validate_QRcode_ticket(ticket):
             raise AsstException('二维码信息校验失败')
 
-        logger.info('二维码登录成功')
         self.is_login = True
         self.nick_name = self.get_user_info()
+        logger.info('%s 二维码登录成功' % self.nick_name)
         self._save_cookies()
 
     def _get_reserve_url(self, sku_id):
@@ -436,9 +436,14 @@ class Assistant(object):
             reserve_result = result.text.strip(' \t\r\n')
             # 预约成功，已获得抢购资格 / 您已成功预约过了，无需重复预约
             logger.info(reserve_result)
+            if self.send_message:
+                self.messenger.send(text='用户: [%s]' % self.nick_name + reserve_result, desp='')
         else:
             logger.info("预约失败时间已过或者JD修改了返回结构")
+            if self.send_message:
+                self.messenger.send(text='用户: [%s]预约失败时间已过或者JD修改了返回结构' % self.nick_name, desp='')
 
+        logger.info('当前用户:' + self.nick_name)
     @check_login
     def get_user_info(self):
         """获取用户信息
@@ -1012,7 +1017,7 @@ class Assistant(object):
                 order_id = resp_json.get('orderId')
                 logger.info('订单提交成功! 订单号：%s', order_id)
                 if self.send_message:
-                    self.messenger.send(text='jd-assistant 订单提交成功', desp='用户: %s 订单号：%s' % (self.nick_name,order_id))
+                    self.messenger.send(text='用户: %s 订单提交成功,订单号：%s' % (self.nick_name,order_id), desp='')
                 return True
             else:
                 message, result_code = resp_json.get('message'), resp_json.get('resultCode')
@@ -1335,7 +1340,7 @@ class Assistant(object):
             pay_url = 'https:' + resp_json.get('pcUrl')
             logger.info('抢购成功，订单号: %s, 总价: %s, 电脑端付款链接: %s', order_id, total_money, pay_url)
             if self.send_message:
-                self.messenger.send(text='jd-assistant 订单抢购成功', desp='用户: %s 订单号：%s' % (self.nick_name,order_id))
+                self.messenger.send(text='用户: %s 订单抢购成功,订单号：%s' % (self.nick_name,order_id), desp='')
             return True
         else:
             logger.info('抢购失败，返回信息: %s', resp_json)
