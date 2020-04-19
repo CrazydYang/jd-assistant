@@ -6,8 +6,10 @@ import pickle
 import re
 import random
 import time
-
+import threading
 import requests
+import datetime
+from apscheduler.schedulers.blocking import BlockingScheduler
 from bs4 import BeautifulSoup
 
 from config import global_config
@@ -31,8 +33,10 @@ from util import (
     parse_items_dict,
     response_status,
     save_image,
-    split_area_id
+    split_area_id,
+    setSystemTime
 )
+from locale import format
 
 
 class Assistant(object):
@@ -78,6 +82,29 @@ class Assistant(object):
             local_cookies = pickle.load(f)
         self.sess.cookies.update(local_cookies)
         self.is_login = self._validate_cookies()
+    
+    def _load_cookies_by_nickname(self,inputname):
+        cookies_file = './cookies/' + inputname + '.cookies'
+#         for name in os.listdir('./cookies'):
+#             if name.endswith('.cookies'):
+#                 cookies_file = './cookies/{0}'.format(name)
+#                 break
+        with open(cookies_file, 'rb') as f:
+            local_cookies = pickle.load(f)
+        self.sess.cookies.update(local_cookies)
+        self.nick_name = inputname
+        self.is_login = self._validate_cookies()
+        
+    def _check_cookies(self):
+        cookies_file = ''
+        for name in os.listdir('./cookies'):
+            if name.endswith('.cookies'):
+                cookies_file = './cookies/' + name
+                with open(cookies_file, 'rb') as f:
+                    local_cookies = pickle.load(f)
+                self.sess.cookies.update(local_cookies)
+                self.nick_name = name.split('.')[0]
+                self.is_login = self._validate_cookies()
 
     def _save_cookies(self):
         cookies_file = './cookies/{0}.cookies'.format(self.nick_name)
@@ -99,7 +126,10 @@ class Assistant(object):
         try:
             resp = self.sess.get(url=url, params=payload, allow_redirects=False)
             if resp.status_code == requests.codes.OK:
+                logger.info('用户[ %s]cookie生效中'  % self.nick_name)
                 return True
+            else:
+                logger.info('用户[ %s]cookie已失效'  % self.nick_name)
         except Exception as e:
             logger.error(e)
 
@@ -320,9 +350,9 @@ class Assistant(object):
         """二维码登陆
         :return:
         """
-        if self.is_login:
-            logger.info('登录成功')
-            return
+#         if self.is_login:
+#             logger.info('登录成功')
+#             return
 
         self._get_login_page()
 
@@ -382,13 +412,13 @@ class Assistant(object):
         return resp_json
 
     @check_login
-    def make_reserve(self, sku_id, buy_time):
+    def make_reserve(self, sku_id):
         """商品预约
         :param sku_id: 商品id
         :return:
         """
-        t = Timer(buy_time=buy_time)
-        t.start()
+#         t = Timer(buy_time=buy_time)
+#         t.start()
 
         reserve_url = self._get_reserve_url(sku_id)
         if not reserve_url:
@@ -982,7 +1012,7 @@ class Assistant(object):
                 order_id = resp_json.get('orderId')
                 logger.info('订单提交成功! 订单号：%s', order_id)
                 if self.send_message:
-                    self.messenger.send(text='jd-assistant 订单提交成功', desp='订单号：%s' % order_id)
+                    self.messenger.send(text='jd-assistant 订单提交成功', desp='用户: %s 订单号：%s' % (self.nick_name,order_id))
                 return True
             else:
                 message, result_code = resp_json.get('message'), resp_json.get('resultCode')
@@ -1032,6 +1062,7 @@ class Assistant(object):
         :param interval: 下单执行间隔，可选参数，默认5秒
         :return:
         """
+
         t = Timer(buy_time=buy_time)
         t.start()
 
@@ -1154,8 +1185,8 @@ class Assistant(object):
                 logger.info("抢购链接获取成功: %s", seckill_url)
                 return seckill_url
             else:
-                logger.info("抢购链接获取失败，%s不是抢购商品或抢购页面暂未刷新，0.1秒后重试", sku_id)
-                time.sleep(0.1)
+                logger.info("抢购链接获取失败，%s不是抢购商品或抢购页面暂未刷新，正在重试", sku_id)
+#                 time.sleep(0.05)
 
     def request_seckill_url(self, sku_id):
         """访问商品的抢购链接（用于设置cookie等）
@@ -1304,7 +1335,7 @@ class Assistant(object):
             pay_url = 'https:' + resp_json.get('pcUrl')
             logger.info('抢购成功，订单号: %s, 总价: %s, 电脑端付款链接: %s', order_id, total_money, pay_url)
             if self.send_message:
-                self.messenger.send(text='jd-assistant 订单抢购成功', desp='订单号：%s' % order_id)
+                self.messenger.send(text='jd-assistant 订单抢购成功', desp='用户: %s 订单号：%s' % (self.nick_name,order_id))
             return True
         else:
             logger.info('抢购失败，返回信息: %s', resp_json)
@@ -1324,6 +1355,7 @@ class Assistant(object):
         :param num: 购买数量，可选参数，默认1个
         :return: 抢购结果 True/False
         """
+        
         for count in range(1, retry + 1):
             logger.info('第[%s/%s]次尝试抢购商品:%s', count, retry, sku_id)
             self.request_seckill_url(sku_id)
@@ -1344,7 +1376,7 @@ class Assistant(object):
         self.track_id = self.sess.cookies['TrackID']
 
 
-    def exec_seckill_by_time(self, sku_ids, buy_time, retry=4, interval=4, num=1):
+    def exec_seckill_by_time(self, sku_ids, retry=4, interval=4, num=1):
         """定时抢购
         :param sku_ids: 商品id，多个商品id用逗号进行分割，如"123,456,789"
         :param buy_time: 下单时间，例如：'2018-09-28 22:45:50.000'
@@ -1355,13 +1387,17 @@ class Assistant(object):
         """
         items_dict = parse_sku_id(sku_ids=sku_ids)
         logger.info('准备抢购商品:%s', list(items_dict.keys()))
-
-        t = Timer(buy_time=buy_time)
-        t.start()
-
+        setSystemTime()
+#         t = Timer(buy_time=buy_time)
+#         t.start()
         for sku_id in items_dict:
             logger.info('开始抢购商品:%s', sku_id)
-            self.exec_seckill(sku_id, retry, interval, num)
+            th = threading.Thread(target=self.exec_seckill, args=(sku_id, retry, interval, num,))
+            th.start()
+            
+#         for sku_id in items_dict:
+#             logger.info('开始抢购商品:%s', sku_id)
+#             self.exec_seckill(sku_id, retry, interval, num)
 
     @check_login
     def exec_reserve_seckill_by_time(self, sku_id, buy_time, retry=4, interval=4, num=1):
@@ -1382,7 +1418,7 @@ class Assistant(object):
         :param num: 购买数量，可选参数，默认1个
         :return:
         """
-
+        
         t = Timer(buy_time=buy_time)
         t.start()
 
@@ -1408,6 +1444,7 @@ class Assistant(object):
         :param submit_interval: 提交订单失败后重试时间间隔，可选参数，默认5秒
         :return:
         """
+#         setSystemTime()
         items_dict = parse_sku_id(sku_ids)
         items_list = list(items_dict.keys())
         area_id = parse_area_id(area=area)

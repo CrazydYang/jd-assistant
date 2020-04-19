@@ -7,6 +7,9 @@ import random
 import re
 import warnings
 import sys
+import win32api
+import datetime
+import time
 from base64 import b64encode
 
 import requests
@@ -78,6 +81,24 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.15 (KHTML, like Gecko) Chrome/24.0.1295.0 Safari/537.15",
     "Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.14 (KHTML, like Gecko) Chrome/24.0.1292.0 Safari/537.14"
 ]
+
+
+def setSystemTime():
+    url = 'https://a.jd.com//ajax/queryServerData.html'
+    session = requests.session()
+    # get server time
+
+    t0 = datetime.datetime.now()
+    ret = session.get(url).text
+    t1 = datetime.datetime.now()
+    
+    js = json.loads(ret)
+    t = float(js["serverTime"]) / 1000
+    dt = datetime.datetime.fromtimestamp(t) + ((t1 - t0) / 2)
+    tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, tm_wday, tm_yday, tm_isdst = time.gmtime(time.mktime(dt.timetuple()))
+    msec = dt.microsecond / 1000
+    win32api.SetSystemTime(tm_year, tm_mon, tm_wday, tm_mday, tm_hour, tm_min, tm_sec, int(msec))
+    logger.info('时间已经同步')
 
 
 def encrypt_pwd(password, public_key=RSA_PUBLIC_KEY):

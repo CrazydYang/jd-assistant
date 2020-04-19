@@ -4,6 +4,10 @@ from datetime import datetime
 
 from log import logger
 
+from util import (
+    setSystemTime
+)
+
 
 class Timer(object):
 
@@ -14,6 +18,7 @@ class Timer(object):
         self.sleep_interval = sleep_interval
 
     def start(self):
+        setSystemTime()
         logger.info('正在等待到达设定时间:%s' % self.buy_time)
         now_time = datetime.now
         while True:
@@ -21,4 +26,5 @@ class Timer(object):
                 logger.info('时间到达，开始执行……')
                 break
             else:
-                time.sleep(self.sleep_interval)
+#                 logger.info('当前时间')
+                time.sleep(self.sleep_interval/10)
