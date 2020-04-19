@@ -126,10 +126,10 @@ class Assistant(object):
         try:
             resp = self.sess.get(url=url, params=payload, allow_redirects=False)
             if resp.status_code == requests.codes.OK:
-                logger.info('用户[ %s]cookie生效中'  % self.nick_name)
+                logger.info('用户[%s]cookie生效中'  % self.nick_name)
                 return True
             else:
-                logger.info('用户[ %s]cookie已失效'  % self.nick_name)
+                logger.info('用户[%s]cookie已失效'  % self.nick_name)
         except Exception as e:
             logger.error(e)
 
